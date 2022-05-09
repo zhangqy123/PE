@@ -1,0 +1,160 @@
+1.Difference analysis (Wilcoxon rank-sum test)
+
+library(WilcoxCV)
+########## Read data 
+data_path = "data.txt"
+
+result_path = "wilcoxon_reslut.txt"
+index_group_1 = 1:67
+
+index_group_2 = 68:139
+
+data = read.delim(data_path, row.names=1)
+########## Data filtering
+filter_1 = which(rowMeans(data[, index_group_1]) < 0.0002 & rowMeans(data[, index_group_2]) < 0.0002)
+
+data = data[-filter_1, ]
+
+########## Run wilcoxon test and save results
+feature_list = c("ID", "Mean_group1", "variance_group1", "std_group1", "Mean_group2", "variance_group2", "std_group2", "p", "q")
+matrix_result <- array(0, dim=c((nrow(data) + 1), length(feature_list)))
+matrix_result[1, ] = feature_list
+for (i in 1:nrow(data)){
+    group_1 = as.numeric(data[i, index_group_1])
+    group_2 = as.numeric(data[i, index_group_2])
+    result_wilcoxon = wilcox.test(group_1, group_2)
+    p_wilcoxon = result_wilcoxon$p.value
+    matrix_result[i + 1, 1:length(feature_list)-1] = c(rownames(data[i, ]), mean(group_1), var(group_1), sd(group_1), mean(group_2), var(group_2), sd(group_2), p_wilcoxon)
+}
+matrix_result[2:(nrow(data)+1),length(feature_list)] = p.adjust(matrix_result[2:(nrow(data)+1),length(feature_list)-1], method = "fdr")
+write(t(matrix_result), file=result_path, ncolumns=length(feature_list), sep="\t")
+2.Heatmap 
+library(pheatmap)
+Exp<-read.table("data.txt",header=T,row.names=1,sep="\t")
+# Exp<-read.delim(file="clipboard",header=T,row.names=1,sep="\t")
+col_anno = data.frame(group=c("PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE","PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE",  "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "PE", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP","LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP","LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP","LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP", "LP","LP", "LP", "LP", "LP", "LP", "LP", "LP"), row.names=colnames(Exp))
+row_anno = data.frame(phylum=c("Verrucomicrobia","Firmicutes","Bacteroidetes","Firmicutes","Firmicutes","Firmicutes","Firmicutes", "Proteobacteria","Firmicutes","Proteobacteria","Fusobacteria","Actinobacteria","Firmicutes","Bacteroidetes","Bacteroidetes","Proteobacteria","Proteobacteria","Bacteroidetes","Bacteroidetes","Firmicutes"), row.names=rownames(Exp))
+ pheatmap(Exp,scale="row",annotation_row=row_anno,annotation_col=col_anno,cluster_cols=F, fontsize=15,color = colorRampPalette(c("navy", "white", "firebrick3"))(50))
+3. Correlation analysis and heatmap (with pheatmap)
+library(pheatmap)
+library(psych)
+library(stringr)
+species_table <- read.table("data.txt",comment.char="",check.names=F,stringsAsFactors=F, row.names=1,header = TRUE, sep = "\t")
+map <-read.table("map.txt",sep="\t",na.strings="",header = T,row.names=1,comment.char = "",check.names = F,stringsAsFactors = F)
+species_table<-na.omit(species_table)
+species_table<-t(species_table)
+merged_table<-data.frame(map,species_table,check.names = F,check.rows = T)
+correlation_results<-corr.test(merged_table,method ="spearman",adjust="fdr")
+r<-correlation_results$r
+p<-correlation_results$p
+r<-r[-c(1:3),-c(4:62)]
+p<-p[-c(1:3),-c(4:62)]
+selected_position_of_species<-head(order(colSums(t(p)<0.05),decreasing =T),20)
+r<-r[selected_position_of_species,]
+p<-p[selected_position_of_species,]
+sig_label<-function(x){ifelse(x<0.001,"***",ifelse(x<0.01,"**",ifelse(x<0.05,"*","")))}
+sig_matrix<-sig_label(p)
+row_anno = data.frame(phylum=c("Firmicutes", "Proteobacteria", "Verrucomicrobia", "Bacteroidetes", "Firmicutes", "Bacteroidetes", "Proteobacteria", "Proteobacteria", "Proteobacteria", "Proteobacteria", "Bacteroidetes", "Firmicutes", "Firmicutes", "Bacteroidetes", "Proteobacteria", "Actinobacteria", "Firmicutes", "Fusobacteria", "Proteobacteria", "Firmicutes"), row.names=rownames(r))
+
+pheatmap(r,fontsize=15,border_color = "black",annotation_row=row_anno,cellwidth = 18,cellheight = 18,
+         display_numbers = sig_matrix,fontsize_row =10,fontsize_col = 15,
+         fontsize_number = 15,
+         cluster_rows=T,clustering_distance_rows="correlation",
+         cluster_cols=T,clustering_distance_cols="euclidean",
+         clustering_method="centroid")
+4. CCA analysis
+library(vegan)
+library(ggplot2)
+otu_matrix<- read.delim('otu.txt',header = T, row.names = 1,check.names = F)
+otu_matrix <- t(otu_matrix)
+envdat_raw<- read.delim('env_table.txt',header = T, row.names = 1,check.names = F)
+envdat <- envdat_raw[match(row.names(otu_matrix), row.names(envdat_raw)),]
+decorana(otu_matrix)
+res <- cca(otu_matrix ~ ., envdat)
+plot(res)
+xxxx <- summary(res)
+aa <- xxxx$concont$importance
+aa <- round(aa, 4)
+pdat <- res$CCA
+samples<-data.frame(sample = row.names(pdat$u),CCA1 = pdat$u[,1],CCA2 = pdat$u[,2])
+species<-data.frame(spece = row.names(pdat$v),CCA1 = pdat$v[,1],CCA2 = pdat$v[,2])
+envi<-data.frame(en = row.names(pdat$biplot),CCA1 = pdat$biplot[,1],CCA2 = pdat$biplot[,2])
+samples$group <- as.factor(envdat_raw$group)
+p <- ggplot() + 
+    geom_hline(aes(yintercept = 0), colour="gray88", linetype="dashed") + 
+    geom_vline(aes(xintercept = 0), colour="gray88", linetype="dashed")  +
+    
+    geom_point(data = species, aes(x=CCA1, y=CCA2),size = 0.5, colour = 'pink', pch = 3) +
+    
+    geom_segment(data = envi,aes(x=0, xend= CCA1, y=0, yend= CCA2 ), arrow = arrow(length = unit(0.3, "cm")), colour = 'red') +
+    geom_text(data = envi,aes(x = CCA1*1.1, y = CCA2*1.1, label = en), size = 3, colour = 'red', check_overlap = TRUE) +
+    
+    geom_point(data = samples, aes(x=CCA1, y=CCA2, colour = group),size = 2)+
+scale_fill_manual(values = c('#E41A1C','#377EB8')) +
+    scale_color_manual(values = c('#E41A1C','#377EB8')) +
+
+    theme_bw() + theme(panel.grid.major=element_line(colour=NA), panel.grid.minor = element_blank()) + 
+    
+    xlab(paste('CCA1 (', aa[2,1]*100, '%)', sep ='')) + ylab(paste('CCA2 (', aa[2,2]*100, '%)', sep ='')) +
+    stat_ellipse(data = samples, aes(x = CCA1, y = CCA2, group = group),type ="t", linetype =2)
+print(p)
+5. Correlation curve
+library(pheatmap)
+library(psych)
+library(stringr)
+library(ggplot2)
+a<-read.delim("A.txt",comment.char="",check.names=F,row.names =1 ,stringsAsFactors=F, header = TRUE, sep = "\t")
+b<-read.delim("B.txt",comment.char="",check.names=F,row.names= 1 ,stringsAsFactors=F, header = TRUE, sep = "\t")
+correlation_results<-corr.test(a,b,method="spearman",adjust='holm')
+r<-correlation_results$r
+p<-correlation_results$p
+write.table(r,'spearman_r.txt',sep = '\t',row.names = T,quote = F)
+write.table(p,'spearman_p.txt',sep = '\t',row.names = T,quote = F)
+mddf <- read.delim("mddf.txt",comment.char="",check.names=F, header = TRUE, sep = "\t")
+symbol <- "B"
+friend <- "A"
+df <- mddf[mddf$variable == friend,]
+rvalue <- as.character(as.expression(substitute(~~italic(r)~"="~rvalue, list(rvalue = format(round(unique(df$r),3), nsmall= 2)))))
+pvalue <- as.character(as.expression(substitute(~~italic(Adjust_P-value)~"="~pvalue, list(pvalue = format(sprintf("%1.1e", unique(df$adjust_p)), nsmall= 2)))))
+ggplot(df, aes_string(x="value", y=symbol)) +
+  geom_point() +
+  #ylab(friend) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  #scale_y_continuous(trans='log2',breaks = c(0.01,0.1)) +
+  #scale_x_continuous(trans='log10',breaks = c(0.01,0.1)) +
+  #annotate("text", x = 0.01, y = 10, label = rvalue, parse = TRUE,color="black") +
+  #annotate("text", x = 0.01, y = 8, label = pvalue, parse = TRUE,color="black") +
+  geom_smooth(formula = y ~ x, method = "lm", se = T, colour = "#0072B5FF")
+6.The work before importing into VSEARCH 
+1).Decompress the fastq.gz file:
+   for i in *.gz;do gunzip $i ;done
+2).Quality inspection(example):
+   /home/ngs/soft/fastp/fastp -i 1_R1_001.fastq -I 1_R2_001.fastq -o 1_R1_001.fq -O 1_R2_001.fq
+3).Merging double-ended sequences to get the "*.fqjion" file(example):
+   /home/ngs/soft/fastq-jion/fastq-join -m 10 1_R1_001.fq 1_R2_001.fq -o 1.fq
+4).fastq转fasta
+5).cat *.fa < all.fa
+7. Analysis of sequencing data in VSEARCH
+# time vsearch  --derep_fulllength  all.fa
+              --sizeout
+              --minuniquesize 4 \
+              --output temp/all-uniques.fa
+              --relabel Uni
+# time vsearch --cluster_fast temp/all-uniques.fa \
+             --id 0.97 \
+             --centroids temp/all-otus.fa
+             --relabel Otu
+# time vsearch --uchime_ref temp/all-otus.fa \
+             --db db/rdp_gold.fa \
+             --nonchimeras result/otus.fa
+# time vsearch --usearch_global all.fa \
+             --db result/otus.fa \
+             --id 0.97 \
+             --otutabout result/otutab.txt
+8. mapping OTU to database in USEARCH
+#./usearch --sintax yxfsalt60otus.fa
+--db rdp_16s_v18.fa
+--strand both
+--tabbedout sintax.txt
+--sintax_cutoff 0.8
