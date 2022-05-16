@@ -126,35 +126,3 @@ ggplot(df, aes_string(x="value", y=symbol)) +
   #annotate("text", x = 0.01, y = 10, label = rvalue, parse = TRUE,color="black") +
   #annotate("text", x = 0.01, y = 8, label = pvalue, parse = TRUE,color="black") +
   geom_smooth(formula = y ~ x, method = "lm", se = T, colour = "#0072B5FF")
-6.The work before importing into VSEARCH 
-1).Decompress the fastq.gz file:
-   for i in *.gz;do gunzip $i ;done
-2).Quality inspection(example):
-   /home/ngs/soft/fastp/fastp -i 1_R1_001.fastq -I 1_R2_001.fastq -o 1_R1_001.fq -O 1_R2_001.fq
-3).Merging double-ended sequences to get the "*.fqjion" file(example):
-   /home/ngs/soft/fastq-jion/fastq-join -m 10 1_R1_001.fq 1_R2_001.fq -o 1.fq
-4).fastq转fasta
-5).cat *.fa < all.fa
-7. Analysis of sequencing data in VSEARCH
-# time vsearch  --derep_fulllength  all.fa
-              --sizeout
-              --minuniquesize 4 \
-              --output temp/all-uniques.fa
-              --relabel Uni
-# time vsearch --cluster_fast temp/all-uniques.fa \
-             --id 0.97 \
-             --centroids temp/all-otus.fa
-             --relabel Otu
-# time vsearch --uchime_ref temp/all-otus.fa \
-             --db db/rdp_gold.fa \
-             --nonchimeras result/otus.fa
-# time vsearch --usearch_global all.fa \
-             --db result/otus.fa \
-             --id 0.97 \
-             --otutabout result/otutab.txt
-8. mapping OTU to database in USEARCH
-#./usearch --sintax yxfsalt60otus.fa
---db rdp_16s_v18.fa
---strand both
---tabbedout sintax.txt
---sintax_cutoff 0.8
